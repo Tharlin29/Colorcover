@@ -1,4 +1,4 @@
-export type PageId = "home" | "create" | "ai-edit" | "book" | "text";
+export type PageId = "design" | "erase" | "create" | "ai-edit" | "book" | "text";
 
 export type CreationMode = "coloring-book" | "standard";
 export type BookPageSize = "us-letter" | "a4";
@@ -60,6 +60,30 @@ export type TextCanvasAspect = "auto" | "2:3" | "4:5" | "1:1" | "4:3" | "16:9";
 
 export type TextImageFrameStyle = "plain" | "book-cover" | "tilt-card" | "circle-badge";
 
+export type TextBoundStyle =
+  | "none"
+  | "solid"
+  | "rounded"
+  | "dashed"
+  | "dotted"
+  | "double"
+  | "neon-glow"
+  | "ribbon"
+  | "ticket"
+  | "bracket"
+  | "top-bottom-rule"
+  | "speech-bubble"
+  | "scallop-seal"
+  | "gold-ornate"
+  | "shadow-card"
+  | "sketch-double"
+  | "leaf-crest"
+  | "circle"
+  | "leaf"
+  | "heart"
+  | "seal"
+  | "book";
+
 export interface FontOption {
   id: string;
   label: string;
@@ -82,6 +106,14 @@ export interface TextLayer {
   strokeColor?: string;
   strokeWidth?: number;
   curve?: number; // -30 to 30 arch curvature
+  boundStyle?: TextBoundStyle;
+  boundPadX?: number; // 4 to 220 (controls horizontal width: narrow -> wide)
+  boundPadY?: number; // 2 to 120 (controls vertical size: small -> large)
+  boundThickness?: number; // 1 to 16
+  boundRadius?: number; // 0 to 60
+  boundColor?: string;
+  boundFillColor?: string;
+  boundFillOpacity?: number; // 0 to 1
   stylePreset: TextStylePreset;
   align: "left" | "center" | "right";
   rotation: number; // -45 to 45 deg
@@ -206,4 +238,103 @@ export interface EditOverlayLayer {
   opacity: number; // 0.1..1
 }
 
+export type ShowcaseLayoutId =
+  | "center-plaque-6"
+  | "top-banner-5"
+  | "hero-plus-4"
+  | "clean-grid-4";
 
+export type ShowcaseBackdropId =
+  | "festive-pine-desk"
+  | "craft-table-lights"
+  | "spring-botanical-oak"
+  | "pastel-kids-desk"
+  | "midnight-studio-gold"
+  | "custom";
+
+export type ShowcasePlaqueStyle = "wood-plaque" | "cloud-sticker" | "ribbon-badge";
+
+export type ShowcaseAspectId = "9:16" | "2:3" | "4:5" | "1:1";
+
+export type ShowcaseCardPaper = "white" | "kraft" | "pastel-blue" | "pastel-cream";
+
+export type ShowcaseHeroTextStyle =
+  | "outline-3d"
+  | "clean"
+  | "shadow"
+  | "pill-box"
+  | "block-3d"
+  | "neon";
+
+export type CardOverlayTextStyle =
+  | "pill-box"
+  | "outline-3d"
+  | "shadow"
+  | "banner-ribbon"
+  | "clean";
+
+export interface ShowcaseCardSlot {
+  id: string;
+  label: string;
+  src: string;
+  paper: ShowcaseCardPaper;
+  caption?: string;
+  overlayText?: string;
+  overlayStyle?: CardOverlayTextStyle;
+  overlayColor?: string;
+  overlayBgColor?: string;
+  overlayPosition?: "top" | "center" | "bottom";
+  overlayX?: number; // 0..100 horizontal % inside card (default 50)
+  overlayY?: number; // 0..100 vertical % inside card
+  overlayFontSize?: number; // percentage scale 60..180 (default 100)
+}
+
+export interface ShowcaseDesignConfig {
+  aspect: ShowcaseAspectId;
+  layout: ShowcaseLayoutId;
+  backdrop: ShowcaseBackdropId;
+  customBackdropSrc?: string;
+  plaqueStyle: ShowcasePlaqueStyle;
+  plaqueBgColor?: string;
+  accentBadge: string; // e.g., "25" or ""
+  titleLine1: string; // e.g., "Cutest" or "Christmas"
+  titleLine2Ribbon: string; // e.g., "Christmas Handprint" or "Coloring Pages"
+  titleLine3: string; // e.g., "Crafts for Kids" or "for Kids"
+  subtitleText: string; // e.g., "Easy Keepsakes" or "Print, color, and celebrate!"
+  footerBrandText: string; // e.g., "Zumblies.com" or ""
+  primaryColor: string;
+  secondaryColor: string;
+  ribbonColor: string;
+  subtitleBgColor: string;
+  subtitleTextColor: string;
+  footerBgColor: string;
+  footerTextColor?: string;
+  title1Color?: string;
+  title1BgColor?: string;
+  title1Style?: ShowcaseHeroTextStyle;
+  title2TextColor?: string;
+  title2Style?: "ribbon" | ShowcaseHeroTextStyle;
+  title3Color?: string;
+  title3BgColor?: string;
+  title3Style?: ShowcaseHeroTextStyle;
+  subtitleStyle?: "pill" | ShowcaseHeroTextStyle;
+  footerStyle?: "pill" | ShowcaseHeroTextStyle;
+  titleFontScale?: number; // percentage 60..150 (default 100)
+  bannerOffsetX?: number; // -35..35 horizontal % offset for hero plaque & text
+  bannerOffsetY?: number; // -35..35 vertical % offset for hero plaque & text
+  title1OffsetX?: number; // -250..250 horizontal offset (base 1000px)
+  title1OffsetY?: number; // -250..250 vertical offset (base 1000px)
+  title2OffsetX?: number;
+  title2OffsetY?: number;
+  title3OffsetX?: number;
+  title3OffsetY?: number;
+  subtitleOffsetX?: number;
+  subtitleOffsetY?: number;
+  footerOffsetX?: number; // -35..35 horizontal % offset
+  footerOffsetY?: number; // -85..5 vertical % offset
+  fontFamily: string;
+  decorTheme: "christmas" | "hearts" | "stars" | "botanical";
+  showCardCaptions: boolean;
+  cards: ShowcaseCardSlot[];
+  customTextLayers?: TextLayer[];
+}

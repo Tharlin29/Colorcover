@@ -16,6 +16,7 @@ import {
   renderAiEditedPhoto,
   renderEditedPhoto,
 } from "../utils/imageEditor";
+import { StepperControl } from "./StepperControl";
 
 interface PhotoEditModalProps {
   photo: PhotoItem | null;
@@ -427,20 +428,15 @@ export function PhotoEditModal({
 
                 {aiPlan && (
                   <div className="space-y-3 pt-2 border-t border-zinc-100">
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-zinc-700 font-medium">Edit Blend Strength</span>
-                        <span className="text-zinc-500 tabular-nums">{aiIntensity}%</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={10}
-                        max={100}
-                        value={aiIntensity}
-                        onChange={(e) => setAiIntensity(Number(e.target.value))}
-                        className="w-full accent-zinc-950 cursor-pointer"
-                      />
-                    </div>
+                    <StepperControl
+                      label="Edit Blend Strength"
+                      value={aiIntensity}
+                      min={10}
+                      max={100}
+                      step={5}
+                      unit="%"
+                      onChange={setAiIntensity}
+                    />
                     <div className="p-3 rounded-lg bg-zinc-50 border border-zinc-200 space-y-1">
                       <p className="text-[11px] font-semibold text-zinc-800">
                         Applied: {aiPlan.editSummary}
@@ -496,33 +492,26 @@ export function PhotoEditModal({
                   </div>
                 </div>
 
-                {/* Sliders */}
-                <div className="space-y-3">
+                {/* + / - Stepper Adjustments */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {(
                     [
-                      { key: "brightness", label: "Brightness", min: 60, max: 140 },
-                      { key: "contrast", label: "Contrast", min: 60, max: 150 },
-                      { key: "saturation", label: "Saturation", min: 0, max: 180 },
-                      { key: "warmth", label: "Warmth", min: -40, max: 40 },
-                      { key: "vignette", label: "Vignette", min: 0, max: 100 },
+                      { key: "brightness", label: "Brightness", min: 60, max: 140, step: 2 },
+                      { key: "contrast", label: "Contrast", min: 60, max: 150, step: 2 },
+                      { key: "saturation", label: "Saturation", min: 0, max: 180, step: 5 },
+                      { key: "warmth", label: "Warmth", min: -40, max: 40, step: 2 },
+                      { key: "vignette", label: "Vignette", min: 0, max: 100, step: 5 },
                     ] as const
                   ).map((item) => (
-                    <div key={item.key} className="space-y-1">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-zinc-700 font-medium">{item.label}</span>
-                        <span className="text-zinc-500 tabular-nums">{adj[item.key]}</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={item.min}
-                        max={item.max}
-                        value={adj[item.key]}
-                        onChange={(e) =>
-                          setAdj((prev) => ({ ...prev, [item.key]: Number(e.target.value) }))
-                        }
-                        className="w-full accent-zinc-950 cursor-pointer"
-                      />
-                    </div>
+                    <StepperControl
+                      key={item.key}
+                      label={item.label}
+                      value={adj[item.key]}
+                      min={item.min}
+                      max={item.max}
+                      step={item.step}
+                      onChange={(next) => setAdj((prev) => ({ ...prev, [item.key]: next }))}
+                    />
                   ))}
                 </div>
 

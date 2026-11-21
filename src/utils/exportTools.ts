@@ -421,6 +421,92 @@ function renderUnicodeCoverDataUrl(
   return canvas.toDataURL("image/jpeg", 0.94);
 }
 
+async function renderFramedImageCoverDataUrl(
+  bookTitle: string,
+  bookSubtitle: string,
+  pageCount: number,
+  pageSize: BookPageSize,
+  coverImage: string
+): Promise<string | null> {
+  const w = pageSize === "a4" ? 1654 : 1700;
+  const h = pageSize === "a4" ? 2339 : 2200;
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(0, 0, w, h);
+
+  const margin = Math.round(w * 0.088);
+  ctx.strokeStyle = "#111113";
+  ctx.lineWidth = 6;
+  ctx.strokeRect(margin, margin, w - margin * 2, h - margin * 2);
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#111113";
+  ctx.font = '700 66px "Plus Jakarta Sans", "Padauk", "Noto Sans Myanmar", sans-serif';
+
+  const maxTextW = w - margin * 3;
+  const words = (bookTitle || "Coloring Book").split(/\s+/);
+  const lines: string[] = [];
+  let cur = "";
+  for (const word of words) {
+    const test = cur ? `${cur} ${word}` : word;
+    if (ctx.measureText(test).width > maxTextW && cur) {
+      lines.push(cur);
+      cur = word;
+    } else {
+      cur = test;
+    }
+  }
+  if (cur) lines.push(cur);
+  const titleLines = lines.slice(0, 2);
+
+  const lineHeight = 82;
+  const titleStartY = margin + 150;
+  titleLines.forEach((line, idx) => {
+    ctx.fillText(line, w / 2, titleStartY + idx * lineHeight, maxTextW);
+  });
+
+  // Draw cover artwork centered in middle box
+  try {
+    const img = await loadImageElement(coverImage, "Book Cover");
+    const iw = Math.max(1, img.naturalWidth || 1000);
+    const ih = Math.max(1, img.naturalHeight || 1000);
+    const boxX = margin + 90;
+    const boxY = titleStartY + titleLines.length * lineHeight + 28;
+    const boxW = w - (margin + 90) * 2;
+    const boxH = h - margin - 240 - boxY;
+    const scale = Math.min(boxW / iw, boxH / ih);
+    const dw = iw * scale;
+    const dh = ih * scale;
+    const dx = boxX + (boxW - dw) / 2;
+    const dy = boxY + (boxH - dh) / 2;
+    ctx.drawImage(img, dx, dy, dw, dh);
+  } catch {
+    // Keep clean framed title if cover image failed to load
+  }
+
+  if (bookSubtitle.trim()) {
+    ctx.fillStyle = "#505056";
+    ctx.font = '500 34px "Plus Jakarta Sans", "Padauk", "Noto Sans Myanmar", sans-serif';
+    ctx.fillText(bookSubtitle.trim(), w / 2, h - margin - 145, maxTextW);
+  }
+
+  ctx.fillStyle = "#78787E";
+  ctx.font = '500 24px "Plus Jakarta Sans", sans-serif';
+  ctx.fillText(
+    `${pageCount} Print-Ready Pages · ${pageSize === "a4" ? "A4" : "US Letter (8.5 × 11 in)"}`,
+    w / 2,
+    h - margin * 1.45
+  );
+
+  return canvas.toDataURL("image/jpeg", 0.94);
+}
+
 export async function exportSinglePhotoAsPdf(
   photo: PhotoItem,
   pageSize: BookPageSize = photo.pageSize || "us-letter"
@@ -443,9 +529,20 @@ export async function exportBookAsPdf(options: {
   bookTitle: string;
   bookSubtitle: string;
   includeCover: boolean;
+  coverImage?: string | null;
+  coverLayout?: "full-image" | "framed-title";
   onProgress?: (pct: number) => void;
 }): Promise<Blob> {
-  const { pages, pageSize, bookTitle, bookSubtitle, includeCover, onProgress } = options;
+  const {
+    pages,
+    pageSize,
+    bookTitle,
+    bookSubtitle,
+    includeCover,
+    coverImage,
+    coverLayout = "framed-title",
+    onProgress,
+  } = options;
   if (pages.length === 0) {
     throw new Error("No pages selected for PDF export.");
   }
@@ -463,48 +560,82 @@ export async function exportBookAsPdf(options: {
 
   if (includeCover) {
     isFirstPdfPage = false;
-    const hasNonLatin1 = /[^\x00-\xFF]/.test(`${bookTitle} ${bookSubtitle}`);
-    const unicodeCoverUrl = hasNonLatin1
-      ? renderUnicodeCoverDataUrl(bookTitle, bookSubtitle, pages.length, pageSize)
-      : null;
-
-    if (unicodeCoverUrl) {
-      doc.addImage(unicodeCoverUrl, "JPEG", 0, 0, cfg.width, cfg.height, undefined, "NONE");
+    if (coverImage && coverLayout === "full-image") {
+      const img = await loadImageElement(coverImage, "Book Cover");
+      const cw = Math.max(1, img.naturalWidth || 1700);
+      const ch = Math.max(1, img.naturalHeight || 2200);
+      await addResolvedImageToDoc(
+        doc,
+        {
+          id: "cover-image",
+          title: bookTitle || "Book Cover",
+          prompt: "",
+          dataUrl: coverImage,
+          width: cw,
+          height: ch,
+          aspectRatio: `${cw}:${ch}`,
+          isColoringPage: false,
+          kind: "edited",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+        cfg
+      );
+    } else if (coverImage) {
+      const framedUrl = await renderFramedImageCoverDataUrl(
+        bookTitle,
+        bookSubtitle,
+        pages.length,
+        pageSize,
+        coverImage
+      );
+      if (framedUrl) {
+        doc.addImage(framedUrl, "JPEG", 0, 0, cfg.width, cfg.height, undefined, "NONE");
+      }
     } else {
-      doc.setFillColor(255, 255, 255);
-      doc.rect(0, 0, cfg.width, cfg.height, "F");
+      const hasNonLatin1 = /[^\x00-\xFF]/.test(`${bookTitle} ${bookSubtitle}`);
+      const unicodeCoverUrl = hasNonLatin1
+        ? renderUnicodeCoverDataUrl(bookTitle, bookSubtitle, pages.length, pageSize)
+        : null;
 
-      const margin = cfg.unit === "in" ? 0.75 : 19;
-      doc.setDrawColor(17, 17, 19);
-      doc.setLineWidth(cfg.unit === "in" ? 0.03 : 0.8);
-      doc.rect(margin, margin, cfg.width - margin * 2, cfg.height - margin * 2);
+      if (unicodeCoverUrl) {
+        doc.addImage(unicodeCoverUrl, "JPEG", 0, 0, cfg.width, cfg.height, undefined, "NONE");
+      } else {
+        doc.setFillColor(255, 255, 255);
+        doc.rect(0, 0, cfg.width, cfg.height, "F");
 
-      doc.setTextColor(17, 17, 19);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(28);
-      doc.text(bookTitle || "Coloring Book", cfg.width / 2, cfg.height * 0.42, {
-        align: "center",
-        maxWidth: cfg.width - margin * 3,
-      });
+        const margin = cfg.unit === "in" ? 0.75 : 19;
+        doc.setDrawColor(17, 17, 19);
+        doc.setLineWidth(cfg.unit === "in" ? 0.03 : 0.8);
+        doc.rect(margin, margin, cfg.width - margin * 2, cfg.height - margin * 2);
 
-      if (bookSubtitle.trim()) {
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(13);
-        doc.setTextColor(80, 80, 86);
-        doc.text(bookSubtitle.trim(), cfg.width / 2, cfg.height * 0.5, {
+        doc.setTextColor(17, 17, 19);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(28);
+        doc.text(bookTitle || "Coloring Book", cfg.width / 2, cfg.height * 0.42, {
           align: "center",
           maxWidth: cfg.width - margin * 3,
         });
-      }
 
-      doc.setFontSize(10);
-      doc.setTextColor(120, 120, 126);
-      doc.text(
-        `${pages.length} Print-Ready Pages · ${pageSize === "a4" ? "A4" : "US Letter (8.5 × 11 in)"}`,
-        cfg.width / 2,
-        cfg.height - margin * 1.6,
-        { align: "center" }
-      );
+        if (bookSubtitle.trim()) {
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(13);
+          doc.setTextColor(80, 80, 86);
+          doc.text(bookSubtitle.trim(), cfg.width / 2, cfg.height * 0.5, {
+            align: "center",
+            maxWidth: cfg.width - margin * 3,
+          });
+        }
+
+        doc.setFontSize(10);
+        doc.setTextColor(120, 120, 126);
+        doc.text(
+          `${pages.length} Print-Ready Pages · ${pageSize === "a4" ? "A4" : "US Letter (8.5 × 11 in)"}`,
+          cfg.width / 2,
+          cfg.height - margin * 1.6,
+          { align: "center" }
+        );
+      }
     }
   }
 
@@ -525,9 +656,10 @@ export async function exportBookAsPdf(options: {
 export async function exportBookAsZip(options: {
   pages: PhotoItem[];
   bookTitle: string;
+  coverImage?: string | null;
   onProgress?: (pct: number) => void;
 }): Promise<Blob> {
-  const { pages, bookTitle, onProgress } = options;
+  const { pages, bookTitle, coverImage, onProgress } = options;
   const zip = new JSZip();
   const safeFolder = (bookTitle || "coloring-book")
     .toLowerCase()
@@ -537,10 +669,21 @@ export async function exportBookAsZip(options: {
   const folder = zip.folder(safeFolder) ?? zip;
   const manifestLines: string[] = [
     `Book Title: ${bookTitle || "Coloring Book"}`,
-    `Total Pages: ${pages.length}`,
+    `Total Pages: ${pages.length}${coverImage ? " (+ Cover Image)" : ""}`,
     `Resolution Policy: 100% Original Full Resolution (No Downscaling)`,
     "",
   ];
+
+  if (coverImage) {
+    try {
+      const { bytes, mime } = await dataUrlToBytes(coverImage);
+      const ext = mime.includes("jpeg") || mime.includes("jpg") ? "jpg" : "png";
+      folder.file(`00_cover.${ext}`, bytes, { compression: "STORE" });
+      manifestLines.push(`00_cover.${ext} | Book Cover Image`);
+    } catch {
+      // Skip invalid cover image
+    }
+  }
 
   for (let i = 0; i < pages.length; i++) {
     const page = pages[i];

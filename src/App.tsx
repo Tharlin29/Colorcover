@@ -4,8 +4,9 @@ import { PhotoHallModal } from "./components/PhotoHallModal";
 import { TopBar } from "./components/TopBar";
 import { AiImageEditPage } from "./pages/AiImageEditPage";
 import { BookBuilderPage } from "./pages/BookBuilderPage";
-import { MainPage } from "./pages/MainPage";
+import { DesignCreatePage } from "./pages/DesignCreatePage";
 import { PhotoCreatePage } from "./pages/PhotoCreatePage";
+import { SelectErasePage } from "./pages/SelectErasePage";
 import { TextStudioPage } from "./pages/TextStudioPage";
 import { PageId, PhotoItem } from "./types/studio";
 import {
@@ -15,7 +16,7 @@ import {
 } from "./utils/storage";
 
 export default function App() {
-  const [activePage, setActivePage] = useState<PageId>("home");
+  const [activePage, setActivePage] = useState<PageId>("design");
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [editingPhoto, setEditingPhoto] = useState<PhotoItem | null>(null);
   const [photoHallOpen, setPhotoHallOpen] = useState(false);
@@ -51,7 +52,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#F7F7F5] text-[#111113]">
+    <div className="min-h-screen flex flex-col bg-[#F7F7F5] text-[#111113] print:hidden">
       <TopBar
         activePage={activePage}
         onNavigate={(page) => {
@@ -63,14 +64,21 @@ export default function App() {
       />
 
       <main className="flex-1">
-        {activePage === "home" && (
-          <MainPage
+        {activePage === "design" && (
+          <DesignCreatePage
             photos={photos}
             onNavigate={navigateTo}
-            onEditPhoto={(photo) => setEditingPhoto(photo)}
-            onDeletePhoto={handleDeletePhoto}
+            onSaveNewPhoto={handleSavePhoto}
             onSendToPage={handleSendToPage}
-            onOpenPhotoHall={() => setPhotoHallOpen(true)}
+          />
+        )}
+
+        {activePage === "erase" && (
+          <SelectErasePage
+            photos={photos}
+            initialPhoto={handoffPhoto}
+            onSaveNewPhoto={handleSavePhoto}
+            onSendToPage={handleSendToPage}
           />
         )}
 
@@ -81,7 +89,7 @@ export default function App() {
             onEditPhoto={(photo) => setEditingPhoto(photo)}
             onDeletePhoto={handleDeletePhoto}
             onSendToPage={handleSendToPage}
-            onBackHome={() => navigateTo("home")}
+            onBackHome={() => navigateTo("design")}
           />
         )}
 
@@ -90,7 +98,7 @@ export default function App() {
             photos={photos}
             initialPhoto={handoffPhoto}
             onSaveNewPhoto={handleSavePhoto}
-            onBackHome={() => navigateTo("home")}
+            onBackHome={() => navigateTo("design")}
           />
         )}
 
@@ -99,7 +107,7 @@ export default function App() {
             photos={photos}
             initialPhoto={handoffPhoto}
             onSaveToPhotoHall={handleSavePhoto}
-            onBackHome={() => navigateTo("home")}
+            onBackHome={() => navigateTo("design")}
           />
         )}
 
@@ -108,7 +116,7 @@ export default function App() {
             photos={photos}
             initialPhoto={handoffPhoto}
             onSaveNewPhoto={handleSavePhoto}
-            onBackHome={() => navigateTo("home")}
+            onBackHome={() => navigateTo("design")}
           />
         )}
       </main>

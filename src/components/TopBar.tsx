@@ -1,4 +1,4 @@
-import { BookOpen, Home, ImagePlus, Images, Type, Wand2 } from "lucide-react";
+import { BookOpen, Eraser, ImagePlus, Images, Sparkles, Type, Wand2 } from "lucide-react";
 import { PageId } from "../types/studio";
 
 interface TopBarProps {
@@ -8,8 +8,9 @@ interface TopBarProps {
   onOpenPhotoHall: () => void;
 }
 
-const NAV_ITEMS: { id: PageId; label: string; mobileLabel: string; icon: typeof Home }[] = [
-  { id: "home", label: "Home", mobileLabel: "Home", icon: Home },
+const NAV_ITEMS: { id: PageId; label: string; mobileLabel: string; icon: typeof Sparkles }[] = [
+  { id: "design", label: "Image Design", mobileLabel: "Design", icon: Sparkles },
+  { id: "erase", label: "Select & Erase", mobileLabel: "Erase", icon: Eraser },
   { id: "create", label: "Photo Create", mobileLabel: "Create", icon: ImagePlus },
   { id: "ai-edit", label: "AI Edit", mobileLabel: "AI Edit", icon: Wand2 },
   { id: "book", label: "Book Builder", mobileLabel: "Book", icon: BookOpen },
@@ -24,7 +25,7 @@ export function TopBar({ activePage, onNavigate, photoCount, onOpenPhotoHall }: 
           {/* Zone 1: Brand Title */}
           <button
             type="button"
-            onClick={() => onNavigate("home")}
+            onClick={() => onNavigate("design")}
             className="text-lg md:text-xl font-bold tracking-tight text-zinc-950 whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 rounded"
           >
             Lumina Studio
@@ -65,12 +66,12 @@ export function TopBar({ activePage, onNavigate, photoCount, onOpenPhotoHall }: 
         </div>
       </header>
 
-      {/* Mobile Bottom Thumb-Zone Navigation Bar (4 pages) */}
+      {/* Mobile Bottom Thumb-Zone Navigation Bar (6 pages) */}
       <nav
         aria-label="Mobile Navigation"
         className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-zinc-200 pb-safe"
       >
-        <div className="grid grid-cols-5 h-16 items-center">
+        <div className="grid grid-cols-6 h-16 items-center">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const isActive = activePage === item.id;

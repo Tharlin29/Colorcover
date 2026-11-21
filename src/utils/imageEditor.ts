@@ -11,6 +11,7 @@ import {
 import { applyDpiToPngDataUrl } from "./exportTools";
 import { getColoringDimensions } from "./proceduralArt";
 import { getTextCanvasDimensions } from "./promoStudio";
+import { drawTextBoundOnCanvas } from "./textBoundRenderer";
 
 export const DEFAULT_ADJUSTMENTS: PhotoAdjustments = {
   brightness: 100,
@@ -435,13 +436,26 @@ export async function renderTextStudioComposite(
 
   // Render Text & Promotional Banner Layers
   for (const layer of layers) {
-    if (!layer.text.trim()) continue;
-    ctx.save();
-    const px = (layer.x / 100) * w;
-    const py = (layer.y / 100) * h;
-    ctx.translate(px, py);
-    ctx.rotate((layer.rotation * Math.PI) / 180);
-    ctx.globalAlpha = layer.opacity;
+    drawTextLayerOnCanvas(ctx, layer, w, h);
+  }
+
+  return { dataUrl: canvas.toDataURL("image/png"), width: w, height: h };
+}
+
+export function drawTextLayerOnCanvas(
+  ctx: CanvasRenderingContext2D,
+  layer: TextLayer,
+  w: number,
+  h: number
+) {
+  if (!layer.text.trim()) return;
+  const baseScale = Math.min(w, h) / 1000;
+  ctx.save();
+  const px = (layer.x / 100) * w;
+  const py = (layer.y / 100) * h;
+  ctx.translate(px, py);
+  ctx.rotate((layer.rotation * Math.PI) / 180);
+  ctx.globalAlpha = layer.opacity;
 
     const scaledSize = Math.max(16, Math.round(layer.fontSize * baseScale));
     ctx.font = `${layer.fontWeight} ${scaledSize}px ${layer.fontFamily}`;
@@ -471,6 +485,35 @@ export async function renderTextStudioComposite(
     const boxY = -totalHeight / 2 - padY;
     const boxW = maxLineWidth + padX * 2;
     const boxH = totalHeight + padY * 2;
+
+    if (layer.boundStyle && layer.boundStyle !== "none") {
+      const hasInnerBox =
+        layer.stylePreset === "pill-box" ||
+        layer.stylePreset === "banner-pill" ||
+        layer.stylePreset === "ribbon-scroll";
+      const bPadX = (layer.boundPadX ?? 36) * baseScale;
+      const bPadY = (layer.boundPadY ?? 18) * baseScale;
+      const innerW = hasInnerBox ? boxW : maxLineWidth;
+      const innerH = hasInnerBox ? boxH : totalHeight;
+      const bBoxW = innerW + bPadX * 2;
+      const bBoxH = innerH + bPadY * 2;
+      let bBoxX = -bBoxW / 2;
+      if (layer.align === "left") {
+        bBoxX = (hasInnerBox ? -padX : 0) - bPadX;
+      } else if (layer.align === "right") {
+        bBoxX = -maxLineWidth - (hasInnerBox ? padX : 0) - bPadX;
+      }
+      const bBoxY = -bBoxH / 2;
+
+      drawTextBoundOnCanvas(ctx, bBoxX, bBoxY, bBoxW, bBoxH, baseScale, {
+        style: layer.boundStyle,
+        thickness: layer.boundThickness ?? 4,
+        radius: layer.boundRadius ?? 14,
+        strokeColor: layer.boundColor || "#FFFFFF",
+        fillColor: layer.boundFillColor || "#111113",
+        fillOpacity: layer.boundFillOpacity ?? 0,
+      });
+    }
 
     if (layer.stylePreset === "pill-box") {
       ctx.fillStyle = layer.bgColor;
@@ -661,10 +704,7 @@ export async function renderTextStudioComposite(
       }
     });
 
-    ctx.restore();
-  }
-
-  return { dataUrl: canvas.toDataURL("image/png"), width: w, height: h };
+  ctx.restore();
 }
 
 export async function prepareImageForAiAnalysis(
@@ -1411,7 +1451,8 @@ export async function renderStageCompositeWithLayers(
   width: number,
   height: number,
   layers: EditOverlayLayer[],
-  coloringConfig: AiEditColoringConfig
+  coloringConfig: AiEditColoringConfig,
+  textLayers: TextLayer[] = []
 ): Promise<{ dataUrl: string; width: number; height: number }> {
   const baseImg = await loadImage(baseDataUrl);
   const canvas = document.createElement("canvas");
@@ -1477,6 +1518,13 @@ export async function renderStageCompositeWithLayers(
       }
     }
     ctx.putImageData(imageData, 0, 0);
+  }
+
+  for (const tl of textLayers) {
+    drawTextLayerOnCanvas(ctx, tl, width, height);
+  }
+
+  if (coloringConfig.enabled) {
     const rawPng = canvas.toDataURL("image/png");
     const dpiPng = await applyDpiToPngDataUrl(rawPng, coloringConfig.dpi);
     return { dataUrl: dpiPng, width, height };

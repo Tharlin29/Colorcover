@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Copy,
   Download,
+  Eraser,
   Image as ImageIcon,
   ImagePlus,
   Layers,
@@ -21,6 +22,12 @@ import {
   Upload,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import {
+  EraseFillMode,
+  ImageRegionEraserModal,
+} from "../components/ImageRegionEraserModal";
+import { StepperControl } from "../components/StepperControl";
+import { TextBoundSvg } from "../components/TextBoundSvg";
 import {
   PhotoItem,
   TextCanvasAspect,
@@ -41,6 +48,7 @@ import {
   SCENIC_BACKDROPS,
 } from "../utils/promoStudio";
 import { readFileAsDataUrl, triggerDownload } from "../utils/storage";
+import { TEXT_BOUND_STYLES } from "../utils/textBoundRenderer";
 
 interface TextStudioPageProps {
   photos: PhotoItem[];
@@ -113,6 +121,14 @@ function createDefaultLayer(index = 1): TextLayer {
     strokeColor: "#111113",
     strokeWidth: 8,
     curve: 0,
+    boundStyle: "none",
+    boundPadX: 36,
+    boundPadY: 18,
+    boundThickness: 4,
+    boundRadius: 14,
+    boundColor: "#FFFFFF",
+    boundFillColor: "#111113",
+    boundFillOpacity: 0.25,
     stylePreset: "shadow",
     align: "center",
     rotation: 0,
@@ -160,6 +176,12 @@ export function TextStudioPage({
   const [genError, setGenError] = useState<string | null>(null);
 
   const [showHallPickerFor, setShowHallPickerFor] = useState<"add" | "replace" | null>(null);
+  const [eraserTarget, setEraserTarget] = useState<{
+    kind: "bg" | "overlay";
+    src: string;
+    title: string;
+    defaultFillMode: EraseFillMode;
+  } | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedNotice, setSavedNotice] = useState(false);
   const [stageDims, setStageDims] = useState<{ width: number; height: number }>({
@@ -171,14 +193,6 @@ export function TextStudioPage({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addImageInputRef = useRef<HTMLInputElement>(null);
   const replaceImageInputRef = useRef<HTMLInputElement>(null);
-  const draggingRef = useRef<{
-    kind: "text" | "image";
-    layerId: string;
-    startClientX: number;
-    startClientY: number;
-    startX: number;
-    startY: number;
-  } | null>(null);
 
   useEffect(() => {
     const el = stageRef.current;
@@ -469,15 +483,7 @@ export function TextStudioPage({
     }
   };
 
-  const handlePointerDown = (
-    e: React.PointerEvent<HTMLDivElement>,
-    kind: "text" | "image",
-    id: string,
-    x: number,
-    y: number
-  ) => {
-    e.stopPropagation();
-    e.currentTarget.setPointerCapture(e.pointerId);
+  const handleSelectStageLayer = (kind: "text" | "image", id: string) => {
     if (kind === "text") {
       setActiveLayerId(id);
       setInspectorTab("text");
@@ -485,45 +491,6 @@ export function TextStudioPage({
       setActiveImageId(id);
       setInspectorTab("images");
     }
-    draggingRef.current = {
-      kind,
-      layerId: id,
-      startClientX: e.clientX,
-      startClientY: e.clientY,
-      startX: x,
-      startY: y,
-    };
-  };
-
-  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const drag = draggingRef.current;
-    const stage = stageRef.current;
-    if (!drag || !stage) return;
-
-    const rect = stage.getBoundingClientRect();
-    const dxPct = ((e.clientX - drag.startClientX) / Math.max(1, rect.width)) * 100;
-    const dyPct = ((e.clientY - drag.startClientY) / Math.max(1, rect.height)) * 100;
-
-    let nx = Math.max(4, Math.min(96, drag.startX + dxPct));
-    let ny = Math.max(4, Math.min(96, drag.startY + dyPct));
-
-    if (Math.abs(nx - 50) < 2) nx = 50;
-    if (Math.abs(ny - 50) < 2) ny = 50;
-
-    if (drag.kind === "text") {
-      setLayers((prev) =>
-        prev.map((l) => (l.id === drag.layerId ? { ...l, x: nx, y: ny } : l))
-      );
-    } else {
-      setImageLayers((prev) =>
-        prev.map((img) => (img.id === drag.layerId ? { ...img, x: nx, y: ny } : img))
-      );
-    }
-    setSavedNotice(false);
-  };
-
-  const handlePointerUp = () => {
-    draggingRef.current = null;
   };
 
   const exportComposite = async (saveToHall: boolean) => {
@@ -881,7 +848,7 @@ export function TextStudioPage({
                   <div className="pointer-events-none absolute top-0 bottom-0 left-1/2 w-px bg-blue-400/70 z-30" />
                 )}
 
-                {/* Draggable Image / Book Cover / Coloring Card Layers */}
+                {/* Click-to-Select Image / Book Cover / Coloring Card Layers */}
                 {imageLayers.map((imgLayer) => {
                   const isActive =
                     inspectorTab === "images" && activeImageLayer?.id === imgLayer.id;
@@ -892,12 +859,10 @@ export function TextStudioPage({
                   return (
                     <div
                       key={imgLayer.id}
-                      onPointerDown={(e) =>
-                        handlePointerDown(e, "image", imgLayer.id, imgLayer.x, imgLayer.y)
-                      }
-                      onPointerMove={handlePointerMove}
-                      onPointerUp={handlePointerUp}
-                      onPointerCancel={handlePointerUp}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSelectStageLayer("image", imgLayer.id);
+                      }}
                       style={{
                         left: `${imgLayer.x}%`,
                         top: `${imgLayer.y}%`,
@@ -905,7 +870,7 @@ export function TextStudioPage({
                         opacity: imgLayer.opacity,
                         transform: `translate(-50%, -50%) rotate(${imgLayer.rotation}deg)`,
                       }}
-                      className={`absolute cursor-move z-10 ${
+                      className={`absolute cursor-pointer z-10 ${
                         isActive ? "ring-2 ring-blue-500 ring-offset-2 rounded" : ""
                       }`}
                     >
@@ -1013,29 +978,52 @@ export function TextStudioPage({
                   );
                 })}
 
-                {/* Draggable Text Layers */}
+                {/* Click-to-Select Text Layers */}
                 {layers.map((layer) => {
                   const isActive = inspectorTab === "text" && activeLayer?.id === layer.id;
+                  const hasBound = Boolean(layer.boundStyle && layer.boundStyle !== "none");
+                  const bPadX = (layer.boundPadX ?? 36) * baseScale;
+                  const bPadY = (layer.boundPadY ?? 18) * baseScale;
                   return (
                     <div
                       key={layer.id}
-                      onPointerDown={(e) =>
-                        handlePointerDown(e, "text", layer.id, layer.x, layer.y)
-                      }
-                      onPointerMove={handlePointerMove}
-                      onPointerUp={handlePointerUp}
-                      onPointerCancel={handlePointerUp}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSelectStageLayer("text", layer.id);
+                      }}
                       style={{
                         left: `${layer.x}%`,
                         top: `${layer.y}%`,
                         transform: `translate(-50%, -50%) rotate(${layer.rotation}deg)`,
                       }}
-                      className={`absolute cursor-move px-1.5 py-0.5 rounded z-20 max-w-[94%] ${
-                        isActive ? "ring-2 ring-blue-500 ring-offset-1" : ""
-                      }`}
+                      className={`absolute cursor-pointer rounded z-20 max-w-[94%] ${
+                        hasBound ? "" : "px-1.5 py-0.5"
+                      } ${isActive ? "ring-2 ring-blue-500 ring-offset-1" : ""}`}
                     >
-                      <div style={getLayerPreviewStyle(layer)}>
-                        {renderPreviewTextContent(layer)}
+                      <div
+                        className="relative"
+                        style={
+                          hasBound
+                            ? {
+                                padding: `${bPadY}px ${bPadX}px`,
+                              }
+                            : undefined
+                        }
+                      >
+                        {hasBound && (
+                          <TextBoundSvg
+                            styleType={layer.boundStyle!}
+                            thickness={layer.boundThickness ?? 4}
+                            radius={layer.boundRadius ?? 14}
+                            strokeColor={layer.boundColor || "#FFFFFF"}
+                            fillColor={layer.boundFillColor || "#111113"}
+                            fillOpacity={layer.boundFillOpacity ?? 0}
+                            scale={baseScale}
+                          />
+                        )}
+                        <div className="relative z-10" style={getLayerPreviewStyle(layer)}>
+                          {renderPreviewTextContent(layer)}
+                        </div>
                       </div>
                     </div>
                   );
@@ -1046,17 +1034,36 @@ export function TextStudioPage({
 
           {/* Background Selector: Scenic Illustrated + Photo Hall + Gradients */}
           <div className="bg-white border border-zinc-200 rounded-2xl p-4 space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs font-semibold text-zinc-700">
                 Background Scene, Photo Hall or Gradient
               </span>
-              <button
-                type="button"
-                onClick={resetBlankStudio}
-                className="text-[11px] font-medium text-zinc-500 hover:text-zinc-950 cursor-pointer"
-              >
-                Reset to Simple Text
-              </button>
+              <div className="flex items-center gap-3">
+                {bgMode === "image" && selectedSrc && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEraserTarget({
+                        kind: "bg",
+                        src: selectedSrc,
+                        title: `Select & Erase · ${selectedTitle}`,
+                        defaultFillMode: "smart-fill",
+                      })
+                    }
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-600 hover:text-red-700 cursor-pointer"
+                  >
+                    <Eraser className="w-3.5 h-3.5" />
+                    <span>Select & Erase Bg</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={resetBlankStudio}
+                  className="text-[11px] font-medium text-zinc-500 hover:text-zinc-950 cursor-pointer"
+                >
+                  Reset to Simple Text
+                </button>
+              </div>
             </div>
             <div className="flex items-center gap-2 overflow-x-auto pb-1">
               {SCENIC_BACKDROPS.map((sc) => {
@@ -1410,69 +1417,244 @@ export function TextStudioPage({
                     </div>
                   </div>
 
-                  {/* Sliders */}
-                  <div className="grid grid-cols-2 gap-3.5">
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-zinc-700 font-medium">Size</span>
-                        <span className="text-zinc-500 tabular-nums">{activeLayer.fontSize}px</span>
+                  {/* + / - Position & Stepper Adjustments */}
+                  <div className="space-y-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-1.5">
+                      <span className="text-[11px] font-semibold text-zinc-700">
+                        Text Position (အပေါ်/အောက် နှင့် ဘယ်/ညာ)
+                      </span>
+                      <div className="flex flex-wrap items-center gap-1">
+                        {(
+                          [
+                            { label: "Top", y: 12 },
+                            { label: "Mid", y: 50 },
+                            { label: "Bottom", y: 88 },
+                          ] as const
+                        ).map((v) => (
+                          <button
+                            key={`ts-snap-y-${v.label}`}
+                            type="button"
+                            onClick={() => updateActiveLayer({ y: v.y })}
+                            className={`px-2 py-0.5 text-[10px] font-semibold rounded border cursor-pointer ${
+                              Math.abs(activeLayer.y - v.y) <= 4
+                                ? "bg-zinc-950 text-white border-zinc-950"
+                                : "bg-zinc-50 text-zinc-700 border-zinc-200 hover:border-zinc-400"
+                            }`}
+                          >
+                            {v.label}
+                          </button>
+                        ))}
+                        <span className="text-zinc-300">|</span>
+                        {(
+                          [
+                            { label: "Left", x: 18 },
+                            { label: "Center", x: 50 },
+                            { label: "Right", x: 82 },
+                          ] as const
+                        ).map((h) => (
+                          <button
+                            key={`ts-snap-x-${h.label}`}
+                            type="button"
+                            onClick={() => updateActiveLayer({ x: h.x })}
+                            className={`px-2 py-0.5 text-[10px] font-semibold rounded border cursor-pointer ${
+                              Math.abs(activeLayer.x - h.x) <= 4
+                                ? "bg-zinc-950 text-white border-zinc-950"
+                                : "bg-zinc-50 text-zinc-700 border-zinc-200 hover:border-zinc-400"
+                            }`}
+                          >
+                            {h.label}
+                          </button>
+                        ))}
                       </div>
-                      <input
-                        type="range"
-                        min={16}
-                        max={140}
-                        value={activeLayer.fontSize}
-                        onChange={(e) => updateActiveLayer({ fontSize: Number(e.target.value) })}
-                        className="w-full accent-zinc-950 cursor-pointer"
-                      />
                     </div>
 
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-zinc-700 font-medium">Arch Curve</span>
-                        <span className="text-zinc-500 tabular-nums">{activeLayer.curve ?? 0}</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={-25}
-                        max={25}
-                        value={activeLayer.curve ?? 0}
-                        onChange={(e) => updateActiveLayer({ curve: Number(e.target.value) })}
-                        className="w-full accent-zinc-950 cursor-pointer"
+                    <div className="grid grid-cols-2 gap-3">
+                      <StepperControl
+                        compact
+                        label="Left (-) ↔ Right (+)"
+                        value={Math.round(activeLayer.x)}
+                        min={0}
+                        max={100}
+                        step={2}
+                        unit="%"
+                        onChange={(val) => updateActiveLayer({ x: val })}
                       />
+                      <StepperControl
+                        compact
+                        label="Up (-) ↕ Down (+)"
+                        value={Math.round(activeLayer.y)}
+                        min={0}
+                        max={100}
+                        step={2}
+                        unit="%"
+                        onChange={(val) => updateActiveLayer({ y: val })}
+                      />
+                    <StepperControl
+                      compact
+                      label="Size"
+                      value={activeLayer.fontSize}
+                      min={16}
+                      max={140}
+                      step={2}
+                      unit="px"
+                      onChange={(val) => updateActiveLayer({ fontSize: val })}
+                    />
+                    <StepperControl
+                      compact
+                      label="Arch Curve"
+                      value={activeLayer.curve ?? 0}
+                      min={-25}
+                      max={25}
+                      step={1}
+                      onChange={(val) => updateActiveLayer({ curve: val })}
+                    />
+                    <StepperControl
+                      compact
+                      label="Rotate"
+                      value={activeLayer.rotation}
+                      min={-45}
+                      max={45}
+                      step={2}
+                      unit="°"
+                      onChange={(val) => updateActiveLayer({ rotation: val })}
+                    />
+                    <StepperControl
+                      compact
+                      label="Spacing"
+                      value={activeLayer.letterSpacing}
+                      min={-2}
+                      max={20}
+                      step={1}
+                      onChange={(val) => updateActiveLayer({ letterSpacing: val })}
+                    />
+                    </div>
+                  </div>
+
+                  {/* Custom Text Bound System (Optional · 16 Styles + Custom Size/Width) */}
+                  <div className="p-3.5 rounded-xl bg-zinc-50 border border-zinc-200 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <span className="text-xs font-bold text-zinc-900 block">
+                          Text Bound / ဘောင်စတိုင် (Optional · ၂၁ မျိုး)
+                        </span>
+                        <span className="text-[11px] text-zinc-500">
+                          စိတ်ကြိုက် ဘောင်ထည့်ခြင်း၊ အကျဉ်း/အကျယ် နှင့် အကြီး/အသေး ချိန်ညှိနိုင်ပါသည်
+                        </span>
+                      </div>
+                      {activeLayer.boundStyle && activeLayer.boundStyle !== "none" && (
+                        <button
+                          type="button"
+                          onClick={() => updateActiveLayer({ boundStyle: "none" })}
+                          className="px-2 py-1 text-[11px] font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-md cursor-pointer shrink-0"
+                        >
+                          Remove Bound
+                        </button>
+                      )}
                     </div>
 
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-zinc-700 font-medium">Rotate</span>
-                        <span className="text-zinc-500 tabular-nums">{activeLayer.rotation}°</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={-45}
-                        max={45}
-                        value={activeLayer.rotation}
-                        onChange={(e) => updateActiveLayer({ rotation: Number(e.target.value) })}
-                        className="w-full accent-zinc-950 cursor-pointer"
-                      />
+                    <div className="grid grid-cols-3 gap-1.5 max-h-44 overflow-y-auto pr-1">
+                      {TEXT_BOUND_STYLES.map((bs) => {
+                        const selected = (activeLayer.boundStyle ?? "none") === bs.id;
+                        return (
+                          <button
+                            key={bs.id}
+                            type="button"
+                            onClick={() => updateActiveLayer({ boundStyle: bs.id })}
+                            className={`min-h-[34px] px-2 py-1 text-[11px] font-medium rounded-lg border cursor-pointer truncate ${
+                              selected
+                                ? "bg-zinc-950 text-white border-zinc-950"
+                                : "bg-white text-zinc-700 border-zinc-200 hover:border-zinc-400"
+                            }`}
+                          >
+                            {bs.label}
+                          </button>
+                        );
+                      })}
                     </div>
 
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-zinc-700 font-medium">Spacing</span>
-                        <span className="text-zinc-500 tabular-nums">{activeLayer.letterSpacing}</span>
+                    {activeLayer.boundStyle && activeLayer.boundStyle !== "none" && (
+                      <div className="space-y-3 pt-2 border-t border-zinc-200">
+                        <div className="grid grid-cols-2 gap-3">
+                          <StepperControl
+                            compact
+                            label="Width (အကျဉ်း/အကျယ်)"
+                            value={activeLayer.boundPadX ?? 36}
+                            min={4}
+                            max={220}
+                            step={4}
+                            unit="px"
+                            onChange={(val) => updateActiveLayer({ boundPadX: val })}
+                          />
+                          <StepperControl
+                            compact
+                            label="Size (အကြီး/အသေး)"
+                            value={activeLayer.boundPadY ?? 18}
+                            min={2}
+                            max={120}
+                            step={2}
+                            unit="px"
+                            onChange={(val) => updateActiveLayer({ boundPadY: val })}
+                          />
+                          <StepperControl
+                            compact
+                            label="Line Thickness"
+                            value={activeLayer.boundThickness ?? 4}
+                            min={1}
+                            max={16}
+                            step={1}
+                            unit="px"
+                            onChange={(val) => updateActiveLayer({ boundThickness: val })}
+                          />
+                          <StepperControl
+                            compact
+                            label="Corner Radius"
+                            value={activeLayer.boundRadius ?? 14}
+                            min={0}
+                            max={60}
+                            step={2}
+                            unit="px"
+                            onChange={(val) => updateActiveLayer({ boundRadius: val })}
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+                          <label className="flex items-center justify-between px-2.5 py-2 rounded-lg bg-white border border-zinc-200 text-[11px] cursor-pointer min-h-[38px]">
+                            <span className="text-zinc-700 font-medium">Border</span>
+                            <input
+                              type="color"
+                              value={activeLayer.boundColor || "#FFFFFF"}
+                              onChange={(e) =>
+                                updateActiveLayer({ boundColor: e.target.value })
+                              }
+                              className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent"
+                            />
+                          </label>
+                          <label className="flex items-center justify-between px-2.5 py-2 rounded-lg bg-white border border-zinc-200 text-[11px] cursor-pointer min-h-[38px]">
+                            <span className="text-zinc-700 font-medium">Fill</span>
+                            <input
+                              type="color"
+                              value={activeLayer.boundFillColor || "#111113"}
+                              onChange={(e) =>
+                                updateActiveLayer({ boundFillColor: e.target.value })
+                              }
+                              className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent"
+                            />
+                          </label>
+                          <StepperControl
+                            compact
+                            label="Fill %"
+                            value={Math.round((activeLayer.boundFillOpacity ?? 0) * 100)}
+                            min={0}
+                            max={100}
+                            step={5}
+                            unit="%"
+                            onChange={(val) =>
+                              updateActiveLayer({ boundFillOpacity: val / 100 })
+                            }
+                          />
+                        </div>
                       </div>
-                      <input
-                        type="range"
-                        min={-2}
-                        max={20}
-                        value={activeLayer.letterSpacing}
-                        onChange={(e) =>
-                          updateActiveLayer({ letterSpacing: Number(e.target.value) })
-                        }
-                        className="w-full accent-zinc-950 cursor-pointer"
-                      />
-                    </div>
+                    )}
                   </div>
                 </div>
               ) : null}
@@ -1602,7 +1784,7 @@ export function TextStudioPage({
                   {activeImageLayer && (
                     <div className="space-y-4 pt-1 border-t border-zinc-100">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <button
                             type="button"
                             onClick={() => replaceImageInputRef.current?.click()}
@@ -1616,6 +1798,24 @@ export function TextStudioPage({
                             className="px-2.5 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg cursor-pointer"
                           >
                             Swap from Hall
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEraserTarget({
+                                kind: "overlay",
+                                src: activeImageLayer.src,
+                                title: `Select & Erase · ${activeImageLayer.label}`,
+                                defaultFillMode:
+                                  activeImageLayer.frameStyle === "tilt-card"
+                                    ? "white"
+                                    : "smart-fill",
+                              })
+                            }
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 rounded-lg cursor-pointer"
+                          >
+                            <Eraser className="w-3.5 h-3.5" />
+                            <span>Select & Erase</span>
                           </button>
                         </div>
 
@@ -1700,45 +1900,48 @@ export function TextStudioPage({
                         </label>
                       )}
 
-                      {/* Sliders for image layer */}
-                      <div className="grid grid-cols-2 gap-3.5">
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-xs">
-                            <span className="text-zinc-700 font-medium">Size (%)</span>
-                            <span className="text-zinc-500 tabular-nums">
-                              {Math.round(activeImageLayer.widthPct)}%
-                            </span>
-                          </div>
-                          <input
-                            type="range"
-                            min={10}
-                            max={90}
-                            value={Math.round(activeImageLayer.widthPct)}
-                            onChange={(e) =>
-                              updateActiveImageLayer({ widthPct: Number(e.target.value) })
-                            }
-                            className="w-full accent-zinc-950 cursor-pointer"
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-xs">
-                            <span className="text-zinc-700 font-medium">Tilt / Rotate</span>
-                            <span className="text-zinc-500 tabular-nums">
-                              {activeImageLayer.rotation}°
-                            </span>
-                          </div>
-                          <input
-                            type="range"
-                            min={-35}
-                            max={35}
-                            value={activeImageLayer.rotation}
-                            onChange={(e) =>
-                              updateActiveImageLayer({ rotation: Number(e.target.value) })
-                            }
-                            className="w-full accent-zinc-950 cursor-pointer"
-                          />
-                        </div>
+                      {/* + / - Steppers for image layer */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <StepperControl
+                          compact
+                          label="Position X"
+                          value={Math.round(activeImageLayer.x)}
+                          min={4}
+                          max={96}
+                          step={2}
+                          unit="%"
+                          onChange={(val) => updateActiveImageLayer({ x: val })}
+                        />
+                        <StepperControl
+                          compact
+                          label="Position Y"
+                          value={Math.round(activeImageLayer.y)}
+                          min={4}
+                          max={96}
+                          step={2}
+                          unit="%"
+                          onChange={(val) => updateActiveImageLayer({ y: val })}
+                        />
+                        <StepperControl
+                          compact
+                          label="Size (%)"
+                          value={Math.round(activeImageLayer.widthPct)}
+                          min={10}
+                          max={90}
+                          step={2}
+                          unit="%"
+                          onChange={(val) => updateActiveImageLayer({ widthPct: val })}
+                        />
+                        <StepperControl
+                          compact
+                          label="Tilt / Rotate"
+                          value={activeImageLayer.rotation}
+                          min={-35}
+                          max={35}
+                          step={2}
+                          unit="°"
+                          onChange={(val) => updateActiveImageLayer({ rotation: val })}
+                        />
                       </div>
                     </div>
                   )}
@@ -1856,6 +2059,27 @@ export function TextStudioPage({
           )}
         </div>
       </div>
+
+      <ImageRegionEraserModal
+        open={Boolean(eraserTarget)}
+        imageSrc={eraserTarget?.src || null}
+        title={eraserTarget?.title}
+        defaultFillMode={eraserTarget?.defaultFillMode || "smart-fill"}
+        onClose={() => setEraserTarget(null)}
+        onApply={(newDataUrl, width, height) => {
+          if (!eraserTarget) return;
+          if (eraserTarget.kind === "bg") {
+            setBgMode("image");
+            setSelectedSrc(newDataUrl);
+            setSavedNotice(false);
+          } else if (activeImageLayer) {
+            updateActiveImageLayer({
+              src: newDataUrl,
+              aspectRatio: height > 0 ? width / height : activeImageLayer.aspectRatio,
+            });
+          }
+        }}
+      />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { BookOpen, Download, FileText, Pencil, Trash2, Type, X } from "lucide-react";
+import { BookOpen, Download, Eraser, FileText, Pencil, Trash2, Type, X } from "lucide-react";
 import { useState } from "react";
 import { PageId, PhotoItem } from "../types/studio";
 import { exportSinglePhotoAsPdf } from "../utils/exportTools";
@@ -113,6 +113,17 @@ export function PhotoHallModal({
                       >
                         <Pencil className="w-3.5 h-3.5" />
                         <span>Edit</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onSendToPage("erase", photo);
+                        }}
+                        className="min-h-[38px] inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-zinc-800 bg-zinc-100 hover:bg-zinc-200 rounded-md cursor-pointer whitespace-nowrap"
+                      >
+                        <Eraser className="w-3.5 h-3.5" />
+                        <span>Erase</span>
                       </button>
                       <button
                         type="button"

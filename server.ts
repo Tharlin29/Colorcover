@@ -854,6 +854,260 @@ ${
     }
   });
 
+  app.post("/api/design/compose", async (req, res) => {
+    try {
+      const { prompt, preferredLayout } = req.body as {
+        prompt?: string;
+        preferredLayout?: string;
+      };
+
+      if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
+        return res.status(400).json({ error: "Please enter a design topic or prompt." });
+      }
+
+      const rawPrompt = prompt.trim();
+      const lower = rawPrompt.toLowerCase();
+
+      const buildFallbackDesign = () => {
+        const numMatch = rawPrompt.match(/\b(\d{1,3})\b/);
+        const accentBadge = numMatch ? numMatch[1] : "";
+        const isHoliday =
+          lower.includes("christmas") ||
+          lower.includes("holiday") ||
+          lower.includes("santa") ||
+          lower.includes("winter") ||
+          lower.includes("snowman") ||
+          lower.includes("ခရစ္စမတ်");
+        const isCraft = lower.includes("craft") || lower.includes("handprint") || lower.includes("diy");
+        const cleanTitle = rawPrompt.replace(/\b\d{1,3}\b/, "").trim();
+        const words = cleanTitle.split(/\s+/).filter(Boolean);
+
+        const layout =
+          preferredLayout && ["center-plaque-6", "top-banner-5", "hero-plus-4", "clean-grid-4"].includes(preferredLayout)
+            ? preferredLayout
+            : isCraft
+            ? "center-plaque-6"
+            : "top-banner-5";
+
+        const titleLine1 = words.slice(0, Math.max(1, Math.ceil(words.length * 0.3))).join(" ") || "Creative";
+        const titleLine2Ribbon =
+          words.slice(Math.max(1, Math.ceil(words.length * 0.3)), Math.max(2, Math.ceil(words.length * 0.7))).join(" ") ||
+          (isCraft ? "Handprint Crafts" : "Coloring Pages");
+        const titleLine3 =
+          words.slice(Math.max(2, Math.ceil(words.length * 0.7))).join(" ") || "for Kids";
+
+        return {
+          accentBadge,
+          titleLine1,
+          titleLine2Ribbon,
+          titleLine3,
+          subtitleText: isCraft ? "Easy Keepsakes" : "Print, color, and celebrate!",
+          footerBrandText: "LuminaStudio.com",
+          layout,
+          backdrop: isHoliday
+            ? isCraft
+              ? "craft-table-lights"
+              : "festive-pine-desk"
+            : lower.includes("night") || lower.includes("gold")
+            ? "midnight-studio-gold"
+            : lower.includes("spring") || lower.includes("flower") || lower.includes("nature")
+            ? "spring-botanical-oak"
+            : "pastel-kids-desk",
+          plaqueStyle: isCraft ? "wood-plaque" : "cloud-sticker",
+          decorTheme: isHoliday ? "christmas" : lower.includes("flower") ? "botanical" : "stars",
+          primaryColor: isHoliday ? "#DC2626" : "#E11D48",
+          secondaryColor: isHoliday ? "#15803D" : "#0F766E",
+          ribbonColor: isHoliday ? "#DC2626" : "#2563EB",
+          subtitleBgColor: isCraft ? "#14532D" : "#FDE047",
+          subtitleTextColor: isCraft ? "#FFFFFF" : "#1C1917",
+          footerBgColor: isHoliday ? "#DC2626" : "#0F766E",
+          cards: [],
+        };
+      };
+
+      const ai = getGeminiClient();
+      if (!ai) {
+        return res.json({
+          design: buildFallbackDesign(),
+          source: "fallback",
+        });
+      }
+
+      const systemInstruction = `You are a Pinterest & Etsy Printable Showcase Graphic Designer.
+Given a user's topic or prompt (in English or Burmese), design a vibrant, cohesive Showcase Poster / Pin layout with festive die-cut sticker typography and 6 distinct cute vector card illustrations matching the topic.
+
+STRICT RULES:
+1. Keep \`titleLine1\`, \`titleLine2Ribbon\`, \`titleLine3\`, \`subtitleText\`, and \`footerBrandText\` concise and punchy (2-4 words each). If user writes in Burmese, preserve Burmese script cleanly or match the user's language!
+2. Choose harmonious high-contrast colors (\`primaryColor\`, \`secondaryColor\`, \`ribbonColor\`, \`subtitleBgColor\`, \`subtitleTextColor\`, \`footerBgColor\`). Ensure \`subtitleTextColor\` contrasts strongly against \`subtitleBgColor\`.
+3. For \`cards\`, generate 6 crisp, colorful, adorable card illustrations as raw \`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 640">...</svg>\` strings depicting 6 different themed subjects for this exact prompt (bold ink outlines \`stroke="#18181B" stroke-width="5"\`, cheerful colors, soft pastel or white card background \`<rect width="500" height="640" fill="..."/>\`, NO \`<text>\` or \`<script>\`).`;
+
+      const responseSchema = {
+        type: Type.OBJECT,
+        properties: {
+          accentBadge: { type: Type.STRING, description: "Optional number badge like '25' or '30', or empty string." },
+          titleLine1: { type: Type.STRING },
+          titleLine2Ribbon: { type: Type.STRING },
+          titleLine3: { type: Type.STRING },
+          subtitleText: { type: Type.STRING },
+          footerBrandText: { type: Type.STRING },
+          layout: {
+            type: Type.STRING,
+            enum: ["center-plaque-6", "top-banner-5", "hero-plus-4", "clean-grid-4"],
+          },
+          backdrop: {
+            type: Type.STRING,
+            enum: [
+              "festive-pine-desk",
+              "craft-table-lights",
+              "spring-botanical-oak",
+              "pastel-kids-desk",
+              "midnight-studio-gold",
+            ],
+          },
+          plaqueStyle: {
+            type: Type.STRING,
+            enum: ["wood-plaque", "cloud-sticker", "ribbon-badge"],
+          },
+          decorTheme: {
+            type: Type.STRING,
+            enum: ["christmas", "hearts", "stars", "botanical"],
+          },
+          primaryColor: { type: Type.STRING },
+          secondaryColor: { type: Type.STRING },
+          ribbonColor: { type: Type.STRING },
+          subtitleBgColor: { type: Type.STRING },
+          subtitleTextColor: { type: Type.STRING },
+          footerBgColor: { type: Type.STRING },
+          cards: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                label: { type: Type.STRING },
+                paper: { type: Type.STRING, enum: ["white", "kraft", "pastel-blue", "pastel-cream"] },
+                svg: { type: Type.STRING },
+              },
+              required: ["label", "paper", "svg"],
+            },
+          },
+        },
+        required: [
+          "accentBadge",
+          "titleLine1",
+          "titleLine2Ribbon",
+          "titleLine3",
+          "subtitleText",
+          "footerBrandText",
+          "layout",
+          "backdrop",
+          "plaqueStyle",
+          "decorTheme",
+          "primaryColor",
+          "secondaryColor",
+          "ribbonColor",
+          "subtitleBgColor",
+          "subtitleTextColor",
+          "footerBgColor",
+          "cards",
+        ],
+      };
+
+      let rawJson = "";
+      try {
+        const aiRes = await ai.models.generateContent({
+          model: "gemini-4-hydrogen",
+          contents: `Create a showcase poster design and 6 distinct card illustrations for: "${rawPrompt}"${
+            preferredLayout ? `. Preferred layout: ${preferredLayout}` : ""
+          }`,
+          config: {
+            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+            systemInstruction,
+            responseMimeType: "application/json",
+            responseSchema,
+          },
+        });
+        rawJson = aiRes.text ?? "";
+      } catch (err) {
+        if (isQuotaError(err)) {
+          const liteRes = await ai.models.generateContent({
+            model: "gemini-3.1-flash-lite",
+            contents: `Create a showcase poster design and 6 distinct card illustrations for: "${rawPrompt}"`,
+            config: {
+              systemInstruction,
+              responseMimeType: "application/json",
+              responseSchema,
+            },
+          });
+          rawJson = liteRes.text ?? "";
+        } else {
+          throw err;
+        }
+      }
+
+      const parsed = JSON.parse(rawJson || "{}") as {
+        cards?: Array<{ label?: string; paper?: string; svg?: string }>;
+        [key: string]: unknown;
+      };
+
+      const sanitizedCards = (Array.isArray(parsed.cards) ? parsed.cards : [])
+        .map((c, idx) => {
+          const cleanSvg =
+            typeof c.svg === "string"
+              ? sanitizeSvgMarkup(c.svg, 500, 640, 500, 640)
+              : null;
+          if (!cleanSvg) return null;
+          return {
+            label: String(c.label || `Design ${idx + 1}`),
+            paper: ["white", "kraft", "pastel-blue", "pastel-cream"].includes(String(c.paper))
+              ? String(c.paper)
+              : "white",
+            svg: cleanSvg,
+          };
+        })
+        .filter((item): item is { label: string; paper: string; svg: string } => Boolean(item));
+
+      return res.json({
+        design: {
+          ...parsed,
+          cards: sanitizedCards,
+        },
+        source: "gemini",
+      });
+    } catch (err) {
+      const notice = isQuotaError(err)
+        ? "Free-tier AI quota reached — generated using studio design engine (adjust quota in Settings > Secrets)."
+        : isAuthError(err)
+        ? "API key permission notice — generated using studio design engine."
+        : undefined;
+
+      const rawPrompt = String(req.body?.prompt || "Creative Design").trim();
+      const words = rawPrompt.split(/\s+/).filter(Boolean);
+      return res.json({
+        design: {
+          accentBadge: rawPrompt.match(/\b(\d{1,3})\b/)?.[1] || "",
+          titleLine1: words.slice(0, 2).join(" ") || "Creative",
+          titleLine2Ribbon: words.slice(2, 4).join(" ") || "Showcase Pack",
+          titleLine3: words.slice(4).join(" ") || "for Kids",
+          subtitleText: "Print, color, and celebrate!",
+          footerBrandText: "LuminaStudio.com",
+          layout: "top-banner-5",
+          backdrop: "pastel-kids-desk",
+          plaqueStyle: "cloud-sticker",
+          decorTheme: "stars",
+          primaryColor: "#DC2626",
+          secondaryColor: "#15803D",
+          ribbonColor: "#2563EB",
+          subtitleBgColor: "#FDE047",
+          subtitleTextColor: "#1C1917",
+          footerBgColor: "#DC2626",
+          cards: [],
+        },
+        source: "fallback",
+        notice,
+      });
+    }
+  });
+
   if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
